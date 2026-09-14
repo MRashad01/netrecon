@@ -1,4 +1,4 @@
-"""Async TCP connect scanner with optional banner grabbing."""
+"""Async TCP and UDP port scanner with optional banner grabbing."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _HTTP_PORTS = {80, 443, 8000, 8080, 8443, 8888}
 @dataclass
 class PortResult:
     port: int
-    state: str  # "open" | "closed" | "filtered"
+    state: str  # "open" | "closed" | "filtered" | "open|filtered"
     service: str = "unknown"
     banner: str = ""
 
@@ -31,20 +31,22 @@ class ScanReport:
     resolved_ip: str
     started_at: float
     duration: float = 0.0
+    protocol: str = "tcp"
     results: list[PortResult] = field(default_factory=list)
 
     @property
     def open_ports(self) -> list[PortResult]:
-        return [r for r in self.results if r.state == "open"]
+        return [r for r in self.results if r.state in ("open", "open|filtered")]
 
     def to_dict(self) -> dict:
         return {
             "target": self.target,
             "resolved_ip": self.resolved_ip,
+            "protocol": self.protocol,
             "started_at": self.started_at,
             "duration_seconds": round(self.duration, 3),
             "open_ports": [
-                {"port": r.port, "service": r.service, "banner": r.banner}
+                {"port": r.port, "service": r.service, "state": r.state, "banner": r.banner}
                 for r in self.open_ports
             ],
             "total_scanned": len(self.results),
@@ -90,19 +92,62 @@ async def _probe_port(ip: str, port: int, timeout: float, grab_banners: bool,
         return PortResult(port, "open", service_name(port), banner)
 
 
+async def _probe_udp_port(ip: str, port: int, timeout: float,
+                          sem: asyncio.Semaphore) -> PortResult:
+    async with sem:
+        loop = asyncio.get_running_loop()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setblocking(False)
+        try:
+            sock.connect((ip, port))
+            sock.send(b"")
+        except (ConnectionRefusedError, ConnectionResetError):
+            sock.close()
+            return PortResult(port, "closed", service_name(port, protocol="udp"))
+        except OSError as exc:
+            sock.close()
+            if getattr(exc, "winerror", None) == 10054 or exc.errno in (10054, 111):
+                return PortResult(port, "closed", service_name(port, protocol="udp"))
+            return PortResult(port, "filtered", service_name(port, protocol="udp"))
+
+        try:
+            data = await asyncio.wait_for(loop.sock_recv(sock, 1024), timeout=timeout)
+            banner = data.decode("utf-8", errors="replace").strip()
+            return PortResult(port, "open", service_name(port, protocol="udp"), banner)
+        except asyncio.TimeoutError:
+            return PortResult(port, "open|filtered", service_name(port, protocol="udp"))
+        except (ConnectionRefusedError, ConnectionResetError):
+            return PortResult(port, "closed", service_name(port, protocol="udp"))
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 10054 or exc.errno in (10054, 111):
+                return PortResult(port, "closed", service_name(port, protocol="udp"))
+            return PortResult(port, "filtered", service_name(port, protocol="udp"))
+        finally:
+            sock.close()
+
+
 def resolve(target: str) -> str:
     """Resolve a hostname to an IPv4 address (returns the input if already an IP)."""
     return socket.getaddrinfo(target, None, socket.AF_INET)[0][4][0]
 
 
 async def scan_target(target: str, ports: list[int], *, timeout: float = 2.0,
-                      concurrency: int = 200, grab_banners: bool = True) -> ScanReport:
+                      concurrency: int = 200, grab_banners: bool = True,
+                      protocol: str = "tcp") -> ScanReport:
     """Scan ``ports`` on ``target`` concurrently and return a ScanReport."""
     ip = resolve(target)
-    report = ScanReport(target=target, resolved_ip=ip, started_at=time.time())
+    report = ScanReport(
+        target=target,
+        resolved_ip=ip,
+        started_at=time.time(),
+        protocol=protocol.lower(),
+    )
     t0 = time.monotonic()
     sem = asyncio.Semaphore(concurrency)
-    tasks = [_probe_port(ip, p, timeout, grab_banners, sem) for p in ports]
+    if protocol.lower() == "udp":
+        tasks = [_probe_udp_port(ip, p, timeout, sem) for p in ports]
+    else:
+        tasks = [_probe_port(ip, p, timeout, grab_banners, sem) for p in ports]
     report.results = sorted(await asyncio.gather(*tasks), key=lambda r: r.port)
     report.duration = time.monotonic() - t0
     return report

@@ -9,7 +9,7 @@ import socket
 import sys
 
 from netrecon import __version__
-from netrecon.ports import TOP_PORTS, parse_port_spec
+from netrecon.ports import TOP_PORTS, TOP_UDP_PORTS, parse_port_spec
 from netrecon.scanner import ScanReport, scan_target
 
 LEGAL_NOTE = "Scan only systems you own or have explicit written permission to test."
@@ -18,11 +18,13 @@ LEGAL_NOTE = "Scan only systems you own or have explicit written permission to t
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="netrecon",
-        description=f"Async TCP port scanner with banner grabbing. {LEGAL_NOTE}",
+        description=f"Async TCP and UDP port scanner with banner grabbing. {LEGAL_NOTE}",
     )
     p.add_argument("target", help="hostname or IPv4 address to scan")
     p.add_argument("-p", "--ports", default=None,
                    help='ports to scan, e.g. "22,80,8000-8100" (default: common ports)')
+    p.add_argument("-u", "--udp", action="store_true",
+                   help="perform UDP port scanning instead of TCP connect scan")
     p.add_argument("-t", "--timeout", type=float, default=2.0,
                    help="connect timeout in seconds (default: 2.0)")
     p.add_argument("-c", "--concurrency", type=int, default=200,
@@ -41,10 +43,16 @@ def render_table(report: ScanReport) -> str:
         "",
     ]
     if report.open_ports:
-        lines.append(f"{'PORT':>7}  {'SERVICE':<15} BANNER")
-        for r in report.open_ports:
-            banner = r.banner.splitlines()[0][:60] if r.banner else "-"
-            lines.append(f"{r.port:>7}  {r.service:<15} {banner}")
+        if report.protocol == "udp":
+            lines.append(f"{'PORT':>7}  {'STATE':<13} {'SERVICE':<15} BANNER")
+            for r in report.open_ports:
+                banner = r.banner.splitlines()[0][:60] if r.banner else "-"
+                lines.append(f"{r.port:>7}  {r.state:<13} {r.service:<15} {banner}")
+        else:
+            lines.append(f"{'PORT':>7}  {'SERVICE':<15} BANNER")
+            for r in report.open_ports:
+                banner = r.banner.splitlines()[0][:60] if r.banner else "-"
+                lines.append(f"{r.port:>7}  {r.service:<15} {banner}")
     else:
         lines.append("no open ports found")
     return "\n".join(lines)
@@ -52,8 +60,14 @@ def render_table(report: ScanReport) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    protocol = "udp" if args.udp else "tcp"
     try:
-        ports = parse_port_spec(args.ports) if args.ports else sorted(TOP_PORTS)
+        if args.ports:
+            ports = parse_port_spec(args.ports)
+        elif args.udp:
+            ports = sorted(TOP_UDP_PORTS)
+        else:
+            ports = sorted(TOP_PORTS)
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -64,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
             concurrency=args.concurrency,
             grab_banners=not args.no_banners,
+            protocol=protocol,
         ))
     except socket.gaierror:
         print(f"error: cannot resolve host: {args.target}", file=sys.stderr)

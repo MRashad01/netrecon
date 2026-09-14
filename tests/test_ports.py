@@ -36,3 +36,5 @@ def test_service_names():
     assert service_name(22) == "ssh"
     assert service_name(443) == "https"
     assert service_name(49999) == "unknown"
+    assert service_name(53, protocol="udp") == "dns"
+    assert service_name(123, protocol="udp") == "ntp"

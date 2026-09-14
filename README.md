@@ -13,6 +13,7 @@ Built as a practical reconnaissance tool for **authorized** network assessments:
 - ⚡ **Async I/O** — scans hundreds of ports concurrently with a configurable connection limit
 - 🏷️ **Banner grabbing** — passive reads for server-first protocols (SSH, FTP, SMTP…), polite `HEAD` probe for HTTP ports
 - 🎯 **Flexible port specs** — `-p 22,80,8000-8100` or a curated default list of common services
+- 📡 **UDP Scanning** — `--udp` for scanning UDP services without root privileges
 - 📄 **JSON output** — `--json` for feeding results into other tooling
 - 🐍 **Zero dependencies** — standard library only, Python 3.10+
 
@@ -29,6 +30,9 @@ pip install .
 ```bash
 # Scan common ports on a host you are authorized to test
 netrecon scanme.example.com
+
+# UDP port scan on common UDP services
+netrecon 192.168.1.1 --udp
 
 # Specific ports and ranges, JSON output
 netrecon 192.168.1.10 -p 22,80,443,8000-8100 --json
