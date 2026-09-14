@@ -1,5 +1,9 @@
 # netrecon
 
+[![CI](https://github.com/MRashad01/netrecon/actions/workflows/ci.yml/badge.svg)](https://github.com/MRashad01/netrecon/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+
 Async TCP port scanner with service banner grabbing, written in pure Python (no dependencies).
 
 Built as a practical reconnaissance tool for **authorized** network assessments: fast concurrent scanning, best-effort service identification, and machine-readable JSON output for pipelines.
