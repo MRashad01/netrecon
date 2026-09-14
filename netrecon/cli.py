@@ -29,6 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="max simultaneous connections (default: 200)")
     p.add_argument("--no-banners", action="store_true", help="skip banner grabbing")
     p.add_argument("--json", action="store_true", help="emit JSON instead of a table")
+    p.add_argument("-o", "--output", metavar="PATH", default=None,
+                   help="write JSON report to a file")
     p.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
@@ -71,6 +73,15 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("interrupted", file=sys.stderr)
         return 130
+
+    if args.output:
+        try:
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(report.to_dict(), f, indent=2)
+                f.write("\n")
+        except OSError as e:
+            print(f"error: cannot write output file: {e}", file=sys.stderr)
+            return 1
 
     print(json.dumps(report.to_dict(), indent=2) if args.json else render_table(report))
     return 0
