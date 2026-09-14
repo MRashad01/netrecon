@@ -40,9 +40,30 @@ TOP_PORTS: dict[int, str] = {
     27017: "mongodb",
 }
 
+# The most commonly exposed UDP services.
+TOP_UDP_PORTS: dict[int, str] = {
+    53: "dns",
+    67: "dhcps",
+    68: "dhcpc",
+    69: "tftp",
+    123: "ntp",
+    137: "netbios-ns",
+    138: "netbios-dgm",
+    161: "snmp",
+    162: "snmptrap",
+    500: "isakmp",
+    514: "syslog",
+    1194: "openvpn",
+    1900: "ssdp",
+    4500: "ipsec-nat-t",
+    5353: "mdns",
+}
 
-def service_name(port: int) -> str:
-    """Best-effort service name for a TCP port."""
+
+def service_name(port: int, protocol: str = "tcp") -> str:
+    """Best-effort service name for a TCP or UDP port."""
+    if protocol.lower() == "udp":
+        return TOP_UDP_PORTS.get(port, TOP_PORTS.get(port, "unknown"))
     return TOP_PORTS.get(port, "unknown")
 
 
